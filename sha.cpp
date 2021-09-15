@@ -14,10 +14,6 @@ uint32_t rotate_right(uint32_t chain, int rotate_amount) {
     return (chain >> rotate_amount) | (chain << (32 - rotate_amount));
 }
 
-uint32_t mod_add(uint32_t chain1, uint32_t chain2) {
-    return (chain1 + chain2);// % 4294967296; // O overflow resolve o modulo sozinho
-}
-
 uint32_t l_sigma0(uint32_t chain) {
     uint32_t rotr7 = rotate_right(chain, 7);
     uint32_t rotr18 = rotate_right(chain, 18);
@@ -70,18 +66,30 @@ void print512bit(uint512_t r) {
     std::cout << b << '\n';
 }
 
-void print_hex(u_int32_t i) {
+string get_hex(u_int32_t a, u_int32_t b, u_int32_t c, u_int32_t d, u_int32_t e,
+    u_int32_t f, u_int32_t g, u_int32_t h) {
   std::stringstream stream;
-  stream << "0x" 
-         << std::setfill ('0') << std::setw(sizeof(u_int32_t)*2) 
-         << std::hex << i;
-  cout << stream.str();
+  stream << std::setfill ('0') << std::setw(sizeof(u_int32_t)*2) 
+         << std::hex << a
+         << std::hex << b
+         << std::hex << c
+         << std::hex << d
+         << std::hex << e
+         << std::hex << f
+         << std::hex << g
+         << std::hex << h;
+  return stream.str();
 }
 
 int main(int argc, char** argv) {
-    uint32_t x = 0b10011;
-    uint32_t y = 0b11001;
-    uint32_t z = 0b10100;
+    uint32_t h_a = 0x6a09e667;    uint32_t H_a = 0x6a09e667;
+    uint32_t h_b = 0xbb67ae85;    uint32_t H_b = 0xbb67ae85;
+    uint32_t h_c = 0x3c6ef372;    uint32_t H_c = 0x3c6ef372;
+    uint32_t h_d = 0xa54ff53a;    uint32_t H_d = 0xa54ff53a;
+    uint32_t h_e = 0x510e527f;    uint32_t H_e = 0x510e527f;
+    uint32_t h_f = 0x9b05688c;    uint32_t H_f = 0x9b05688c;
+    uint32_t h_g = 0x1f83d9ab;    uint32_t H_g = 0x1f83d9ab;
+    uint32_t h_h = 0x5be0cd19;    uint32_t H_h = 0x5be0cd19;
     
     char* msg = argv[1];
     int msg_size = strlen(argv[1]);
@@ -89,19 +97,31 @@ int main(int argc, char** argv) {
     int n_blocks = get_n_blocks(msg_bit_size);
 
     uint256_t digest;
+    int byte_counter = 0;
+    int actual_block_byte_limit = 64;
+    bool separator_written = false;
+    bool size_written = false;
     for (int i = 0; i < n_blocks; i++) {
         uint512_t block = 0;
-        for (int j = 0; j < msg_size; j++) { // TODO: tratar para casos com mais de um bloco
-            // cout << std::bitset<8>(msg[j]) << endl;
+        for (; byte_counter < msg_size && byte_counter < actual_block_byte_limit; byte_counter++) {
             block = block << 8;
-            block += msg[j];
+            block += msg[byte_counter];
         }
-        block = block << 1;
-        block += 1;
-        block = block << (512 - msg_bit_size - 1); // TODO: confirmar o -1
-        block += msg_bit_size;
 
-        //print512bit(block);
+        if(!separator_written && 8*(actual_block_byte_limit - byte_counter) >= 1) {
+            block = block << 1;
+            block += 1;
+            separator_written = true;
+            block = block << 8*(actual_block_byte_limit - byte_counter) - 1;
+
+            if(8*(actual_block_byte_limit - byte_counter) >= 65) {
+                block += msg_bit_size;
+                size_written = true;
+            }
+        }
+        if(!size_written && 8*(actual_block_byte_limit - byte_counter) >= 64) {
+            block += msg_bit_size;
+        }
 
         uint32_t message_schedule[64];
         for (int w = 15; w >= 0; w--) {
@@ -110,24 +130,11 @@ int main(int argc, char** argv) {
         }
         for (int w = 16; w < 64; w++) {
             message_schedule[w] = l_sigma1(message_schedule[w-2]) + message_schedule[w-7] + l_sigma0(message_schedule[w-15]) + message_schedule[w-16];
-            // cout << std::bitset<32>(message_schedule[w]) << endl;
         }
-        // cout << std::bitset<512>(a << 500) << endl;
-
-        uint32_t h_a = 0x6a09e667;
-        uint32_t h_b = 0xbb67ae85;
-        uint32_t h_c = 0x3c6ef372;
-        uint32_t h_d = 0xa54ff53a;
-        uint32_t h_e = 0x510e527f;
-        uint32_t h_f = 0x9b05688c;
-        uint32_t h_g = 0x1f83d9ab;
-        uint32_t h_h = 0x5be0cd19;
 
         for (int w = 0; w < 64; w++) {
             uint32_t t1 = u_sigma1(h_e) + choice(h_e, h_f, h_g) + h_h + CONSTS[w] + message_schedule[w];
             uint32_t t2 = u_sigma0(h_a) + majority(h_a, h_b, h_c);
-            cout << "t1:  " << std::bitset<32>(t1) << endl;
-            cout << "t2:  " << std::bitset<32>(t2) << endl;
             h_h = h_g;
             h_g = h_f;
             h_f = h_e;
@@ -137,29 +144,30 @@ int main(int argc, char** argv) {
             h_b = h_a;
 
             h_a = t1 + t2;
-            h_e = t1;
-            // cout << std::bitset<32>(message_schedule[w]) << endl;
+            h_e += t1;
         }
 
-        // cout << std::bitset<32>(h_a) << endl;
-        // h_a += H_a;
-        // h_b += H_b;
-        // h_c += H_c;
-        // h_d += H_d;
-        // h_e += H_e;
-        // h_f += H_f;
-        // h_g += H_g;
-        // h_h += H_h;
+        h_a += H_a;
+        h_b += H_b;
+        h_c += H_c;
+        h_d += H_d;
+        h_e += H_e;
+        h_f += H_f;
+        h_g += H_g;
+        h_h += H_h;
 
-        // print_hex(h_a);
-        // print_hex(h_b);
-        // print_hex(h_c);
-        // print_hex(h_d);
-        // print_hex(h_e);
-        // print_hex(h_f);
-        // print_hex(h_g);
-        // print_hex(h_h);
+        H_a = h_a;
+        H_b = h_b;
+        H_c = h_c;
+        H_d = h_d;
+        H_e = h_e;
+        H_f = h_f;
+        H_g = h_g;
+        H_h = h_h;
+
+        actual_block_byte_limit += 64;
     }
+    cout << get_hex(h_a, h_b, h_c, h_d, h_e, h_f, h_g, h_h) << endl;
 
     return 0;
 }
